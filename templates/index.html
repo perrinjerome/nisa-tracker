@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ t.title }}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --fg:#f1f5f9; --mut:#94a3b8;
+          --gre:#22c55e; --red:#ef4444; --blu:#38bdf8; --amb:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui, "Hiragino Kaku Gothic ProN", sans-serif;
+         background:var(--bg); color:var(--fg); padding:24px; }
+  header { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  h1 { font-size:1.4rem; margin:0; }
+  .spacer { flex:1; }
+  a.btn, button.btn { background:var(--blu); color:#082f49; text-decoration:none; border:0;
+         padding:8px 14px; border-radius:8px; font-weight:600; cursor:pointer; font-size:0.9rem; }
+  .lang a { color:var(--mut); margin-left:8px; text-decoration:none; }
+  .lang a.cur { color:var(--fg); font-weight:700; text-decoration:underline; }
+  .qty { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .card .label { color:var(--mut); font-size:0.8rem; margin-bottom:6px; }
+  .card .big { font-size:1.5rem; font-weight:700; }
+  .pos { color:var(--gre); } .neg { color:var(--red); }
+  section { margin-bottom:20px; }
+  section h2 { font-size:1.05rem; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); font-size:0.9rem; }
+  th { color:var(--mut); font-weight:500; }
+  th:first-child, td:first-child { text-align:left; white-space:nowrap; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--blu); border-radius:4px; }
+  .bar.warn > div { background:var(--amb); }
+  .bar.over > div { background:var(--red); width:100% !important; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
+  .muted { color:var(--mut); font-size:0.85rem; }
+  label { display:block; color:var(--mut); font-size:0.85rem; margin-bottom:4px; }
+  input { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--fg);
+          border-radius:8px; padding:8px; font-size:0.95rem; }
+  form.fc-form { display:grid; grid-template-columns:1fr 1fr auto; gap:12px; align-items:end; }
+  .warning { background:rgba(239,68,68,.12); border:1px solid var(--red); border-radius:8px; padding:8px 12px; margin-top:10px; }
+  #buyForm { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)) auto; gap:12px; align-items:end; }
+  .range { display:flex; gap:8px; margin-bottom:10px; }
+  .range button { background:var(--card); color:var(--mut); border:1px solid var(--line);
+                  padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; }
+  .range button.active { background:var(--blu); color:#082f49; border-color:var(--blu); }
+  .proj-chart { height:400px; margin-top:14px; }
+  .pill { display:inline-block; font-size:0.75rem; padding:2px 8px; border-radius:999px; }
+  .pill.nisa { background:rgba(56,189,248,.15); color:var(--blu); }
+  .pill.tax { background:rgba(148,163,184,.15); color:var(--mut); }
+  #chart { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; height:400px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ t.title }}</h1>
+  <span class="lang">
+    <a href="/lang/ja" class="{{ 'cur' if lang=='ja' }}">{{ t.lang_ja }}</a>
+    <a href="/lang/en" class="{{ 'cur' if lang=='en' }}">{{ t.lang_en }}</a>
+  </span>
+  <div class="spacer"></div>
+  <a class="btn" id="buyToggle" href="javascript:void(0)">{{ t.buy }}</a>
+  <a class="btn" href="/refresh">{{ t.refresh }}</a>
+</header>
+
+{% if val.last_price_date %}
+<p class="muted">{{ t.last_update }}: {{ val.last_price_date }}</p>
+{% else %}
+<p class="warning">{{ t.no_data }}</p>
+{% endif %}
+
+<section id="buy" style="display:none">
+  <h2>{{ t.buy }}</h2>
+  <div class="card">
+    <form id="buyForm">
+      <div><label>{{ t.date }}</label>
+        <input type="date" name="date"></div>
+      <div><label>{{ t.fund }}</label>
+        <select name="fund" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px">
+          {% for f in catalog %}
+          <option value="{{ f.isin }}">{{ f.name }}</option>
+          {% endfor %}
+        </select></div>
+      <div><label>{{ t.buy_amount }}</label>
+        <input type="number" name="amount" min="1" step="1" placeholder="{{ t.buy_placeholder }}"></div>
+      <div><label>{{ t.account }}</label>
+        <select name="account" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px">
+          <option>NISA (つみたて)</option>
+          <option>NISA (成長)</option>
+          <option>特定/一般</option>
+        </select></div>
+      <button class="btn" type="submit">{{ t.buy_submit }}</button>
+    </form>
+    <p id="buyMsg" style="margin:10px 0 0"></p>
+  </div>
+</section>
+
+<div class="qty">
+  <div class="card">
+    <div class="label">{{ t.current_value }}</div>
+    <div class="big">{{ fmt(val.total_value) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">{{ t.total_cost }}</div>
+    <div class="big">{{ fmt(val.total_cost) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">{{ t.total_profit }}</div>
+    <div class="big {{ 'pos' if val.total_profit>=0 else 'neg' }}">{{ fmt(val.total_profit) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">{{ t.profit_pct }}</div>
+    <div class="big {{ 'pos' if val.total_profit>=0 else 'neg' }}">{{ fmt_pct(val.total_profit_pct) }}</div>
+  </div>
+</div>
+
+<div class="grid2">
+  <section>
+    <h2>{{ t.portfolio }}</h2>
+    <div class="card" style="padding:0">
+      <table>
+        <tr><th>{{ t.fund }}</th><th>{{ t.cost }}</th><th>{{ t.value }}</th>
+            <th>{{ t.profit }}</th><th>{{ t.profit_pct }}</th></tr>
+        {% for f in funds %}
+        <tr>
+          <td>{{ f.name }}</td>
+          <td>{{ fmt(f.cost) }}</td>
+          <td>{{ fmt(f.value) }}</td>
+          <td class="{{ 'pos' if f.profit and f.profit>=0 else 'neg' }}">{{ fmt(f.profit) }}</td>
+          <td class="{{ 'pos' if f.profit and f.profit>=0 else 'neg' }}">{{ fmt_pct(f.profit_pct) }}</td>
+        </tr>
+        {% endfor %}
+        <tr style="font-weight:700">
+          <td>{{ t.profit_pct }}</td>
+          <td>{{ fmt(val.total_cost) }}</td>
+          <td>{{ fmt(val.total_value) }}</td>
+          <td class="{{ 'pos' if val.total_profit>=0 else 'neg' }}">{{ fmt(val.total_profit) }}</td>
+          <td class="{{ 'pos' if val.total_profit>=0 else 'neg' }}">{{ fmt_pct(val.total_profit_pct) }}</td>
+        </tr>
+      </table>
+    </div>
+
+    <h2 style="margin-top:20px">{{ t.price_history }}</h2>
+    <div class="range">
+      <button type="button" id="rangeBtn1y" class="active">1Y</button>
+      <button type="button" id="rangeBtn5y">5Y</button>
+      <button type="button" id="rangeBtnAll">All</button>
+    </div>
+    <div id="chart"><canvas id="priceChart"></canvas></div>
+  </section>
+
+  <div>
+    <section>
+      <h2>{{ t.yearly_limit }}</h2>
+      <div class="card">
+        {% for row in yearly_limit_rows %}
+        <p style="margin:0 0 8px"><strong>{{ t.yearly_limit }} {{ row.year }}</strong></p>
+        <table>
+          <tr><th>{{ t.tsumitate }}</th><td>{{ fmt(row.tsumitate) }} / {{ fmt(limits.tsumitate) }}</td>
+              <td style="width:120px"><div class="bar {{ 'warn over' if row.tsumitate>limits.tsumitate else 'warn' if row.tsumitate>limits.tsumitate*0.8 }}">
+                <div style="width:{{ (row.tsumitate/limits.tsumitate*100)|round(0,'floor') if limits.tsumitate else 0 }}%"></div></div></td></tr>
+          <tr><th>{{ t.growth }}</th><td>{{ fmt(row.growth) }} / {{ fmt(limits.growth) }}</td>
+              <td><div class="bar {{ 'warn over' if row.growth>limits.growth else 'warn' if row.growth>limits.growth*0.8 }}">
+                <div style="width:{{ (row.growth/limits.growth*100)|round(0,'floor') if limits.growth else 0 }}%"></div></div></td></tr>
+          <tr><th>{{ t.used }}</th><td>{{ fmt(row.total) }} / {{ fmt(limits.yearly) }}</td>
+              <td><div class="bar"><div style="width:{{ (row.total/limits.yearly*100)|round(0,'floor') if limits.yearly else 0 }}%"></div></div></td></tr>
+        </table>
+        {% endfor %}
+        <p style="margin:16px 0 8px"><strong>{{ t.lifetime_limit }}</strong></p>
+        <table>
+          <tr><th>{{ t.used }}</th><td>{{ fmt(lifetime.total) }} / {{ fmt(limits.lifetime) }}</td>
+              <td style="width:120px"><div class="bar"><div style="width:{{ (lifetime.total/limits.lifetime*100)|round(0,'floor') if limits.lifetime else 0 }}%"></div></div></td></tr>
+          <tr><th>{{ t.growth }} ({{ t.lifetime }})</th><td>{{ fmt(lifetime.growth) }} / {{ fmt(limits.growth_lifetime) }}</td>
+              <td><div class="bar"><div style="width:{{ (lifetime.growth/limits.growth_lifetime*100)|round(0,'floor') if limits.growth_lifetime else 0 }}%"></div></div></td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>{{ t.forecast }}</h2>
+      <div class="card">
+        <div class="qty" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:12px">
+          <div><div class="label">{{ t.forecast_value }}</div>
+               <div class="big fc-value">{{ fmt(fc.projected_value) }}</div></div>
+          <div><div class="label">{{ t.forecast_contributed }}</div>
+               <div class="big fc-contributed">{{ fmt(fc.projected_contributed) }}</div></div>
+          <div><div class="label">{{ t.forecast_profit }}</div>
+               <div class="big fc-profit {{ 'pos' if fc.projected_profit>=0 else 'neg' }}">{{ fmt(fc.projected_profit) }}</div></div>
+        </div>
+        <p class="muted" style="margin:0">
+          {{ t.monthly }}: {{ fmt(fc.monthly_tsumitate) }} ·
+          {{ t.monthly_growth }}: {{ fmt(fc.monthly_growth) }} ·
+          {{ t.annual_return }}: {{ fc.annual_return_pct }}%</p>
+        {% if fc.over_limit_monthly %}
+        <div class="warning">{{ t.pending_warning }} ({{ t.over }})</div>
+        {% else %}
+        <p class="muted" style="margin:8px 0 0">{{ t.no_warning }}</p>
+        {% endif %}
+        <form class="fc-form" method="post" action="/settings" style="margin-top:14px">
+          <div><label>{{ t.monthly }}</label><input type="number" step="any" name="monthly_tsumitate" value="{{ fc.monthly_tsumitate }}"></div>
+          <div><label>{{ t.monthly_growth }}</label><input type="number" step="any" name="monthly_growth" value="{{ fc.monthly_growth }}"></div>
+          <div><label>{{ t.annual_return }}</label><input type="number" step="any" name="annual_return_pct" value="{{ fc.annual_return_pct }}"></div>
+          <button class="btn" type="submit">{{ t.save }}</button>
+        </form>
+        <div id="projChart" class="proj-chart"><canvas id="projCanvas"></canvas></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<section>
+  <h2>{{ t.purchases }}</h2>
+  <div class="card" style="padding:0">
+    <table>
+      <tr><th>{{ t.date }}</th><th>{{ t.fund }}</th><th>{{ t.account }}</th>
+          <th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.cost }}</th></tr>
+      {% for p in purchases %}
+      <tr>
+        <td>{{ p.date }}</td>
+        <td>{{ p.name }}</td>
+        <td><span class="pill {{ 'nisa' if p.account.startswith('NISA ') else 'tax' }}">{{ p.account }}</span></td>
+        <td>{{ p.quantity|round|int }}</td>
+        <td>{{ p.unit_price|round|int }}</td>
+        <td>{{ fmt(p.invested) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+
+<script>
+const hist = {{ hist_json|safe }};
+const fc = {{ fc_json|safe }};
+const fmtYen = new Intl.NumberFormat({{ ('"ja-JP"' if lang=='ja' else '"en-US"')|safe }}, {style:'currency', currency:'JPY', maximumFractionDigits:0});
+const yen = v => fmtYen.format(v).replace(/JPY|¥/g, '¥');
+
+const colors = { total:'#f1f5f9', profit:'#22c55e' };
+
+const labels = new Set(['forest']);
+hist.total.value.forEach(p => labels.add(p.date));
+hist.total.profit.forEach(p => labels.add(p.date));
+const sorted = [...labels].filter(x => x !== 'forest').sort();
+
+function toData(points) {
+  const map = new Map(points.map(p => [p.date, p.value]));
+  return sorted.map(d => map.has(d) ? map.get(d) : null);
+}
+
+const datasets = [
+  { label: '{{ t.invested|safe }}', data: toData(hist.total.cost), borderColor: '#38bdf8',
+    backgroundColor: 'rgba(56,189,248,.35)', fill: 'origin',
+    borderWidth: 2, spanGaps: true, tension: 0.2, pointRadius: 0 },
+  { label: '{{ t.total_profit|safe }}', data: toData(hist.total.value),
+    backgroundColor: 'rgba(34,197,94,.3)', fill: '-1', borderWidth: 0,
+    spanGaps: true, tension: 0.2, pointRadius: 0 },
+  { label: '{{ t.current_value|safe }}', data: toData(hist.total.value), borderColor: colors.total,
+    borderWidth: 2, borderDash: [6, 4], spanGaps: true, tension: 0.2, pointRadius: 0 },
+];
+
+const chart = new Chart(document.getElementById('priceChart'), {
+  type: 'line',
+  data: { labels: sorted, datasets },
+  options: {
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: '#94a3b8' } }, tooltip: { callbacks: { label: c => {
+      if (c.datasetIndex === 1) {
+        const cost = c.chart.data.datasets[0].data[c.dataIndex] || 0;
+        return ` {{ t.total_profit|safe }}: ${fmtYen.format(c.parsed.y - cost)}`;
+      }
+      return ` ${c.dataset.label}: ${fmtYen.format(c.parsed.y)}`;
+    } } } },
+    scales: {
+      x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 }, grid: { color: 'rgba(148,163,184,.15)' } },
+      y: { ticks: { color: '#94a3b8', callback: v => yen(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
+    }
+  }
+});
+
+const cutoff = years => {
+  const base = hist.total.value.length ? hist.total.value[hist.total.value.length - 1].date : fc.months[0].date;
+  const d = new Date(base);
+  d.setFullYear(d.getFullYear() - years);
+  return d.getTime();
+};
+const fullSorted = sorted.slice();
+const fullData = datasets.map(d => d.data.slice());
+function renderRange(years) {
+  const min = years === null ? -Infinity : cutoff(years);
+  const idx = fullSorted.map((date, i) => ({ date, i })).filter(x => new Date(x.date).getTime() >= min).map(x => x.i);
+  datasets.forEach((ds, di) => { ds.data = idx.map(i => fullData[di][i]); });
+  chart.data.labels = idx.map(i => fullSorted[i]);
+  chart.data.datasets = datasets;
+  chart.update();
+}
+const rangeBtn = id => document.getElementById(id);
+const rangeModes = [
+  ['rangeBtn1y', 1],
+  ['rangeBtn5y', 5],
+  ['rangeBtnAll', null],
+];
+rangeModes.forEach(([id, years]) => rangeBtn(id).addEventListener('click', () => {
+  rangeModes.forEach(([oid]) => rangeBtn(oid).classList.toggle('active', oid === id));
+  renderRange(years);
+}));
+renderRange(1);
+
+const proj = {{ proj_json|safe }};
+window.__projChart = new Chart(document.getElementById('projCanvas'), {
+  type: 'line',
+  data: {
+    labels: proj.points.map(p => p.date),
+    datasets: [
+      { label: '{{ t.invested|safe }}', data: proj.points.map(p => p.invested),
+        borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,.35)',
+        fill: true, stack: 'tsumitate', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: '{{ t.projected_profit|safe }}', data: proj.points.map(p => p.profit),
+        borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.3)',
+        fill: true, stack: 'tsumitate', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+    ],
+  },
+  options: {
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#94a3b8' } },
+      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmtYen.format(c.parsed.y)}` } },
+    },
+    scales: {
+      x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 }, grid: { color: 'rgba(148,163,184,.15)' } },
+      y: { stacked: true, ticks: { color: '#94a3b8', callback: v => yen(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
+    }
+  }
+});
+
+const fcForm = document.querySelector('.fc-form');
+const projHistLen = proj.points.length - 120;
+const projBase = projHistLen >= 1 ? proj.points[projHistLen - 1] : null;
+function recomputeProj() {
+  if (!projBase || !window.__projChart) return;
+  const fcValueEl = document.querySelector('.fc-value');
+  const fcContributedEl = document.querySelector('.fc-contributed');
+  const fcProfitEl = document.querySelector('.fc-profit');
+  const t = parseFloat(fcForm.elements.monthly_tsumitate.value) || 0;
+  const g = parseFloat(fcForm.elements.monthly_growth.value) || 0;
+  const a = parseFloat(fcForm.elements.annual_return_pct.value) || 0;
+  const deposit = t + g;
+  const mr = a / 100 / 12;
+  let cap = projBase.total, inv = projBase.invested;
+  let date = projBase.date;
+  const invArr = proj.points.slice(0, projHistLen).map(p => p.invested);
+  const proArr = proj.points.slice(0, projHistLen).map(p => p.profit);
+  for (let i = 0; i < 120; i++) {
+    const [y, m] = date.split('-').map(Number);
+    date = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    inv += deposit;
+    cap = (cap + deposit) * (1 + mr);
+    invArr.push(Number(inv.toFixed(2)));
+    proArr.push(Number((cap - inv).toFixed(2)));
+  }
+  const pc = window.__projChart;
+  pc.data.datasets[0].data = invArr;
+  pc.data.datasets[1].data = proArr;
+  pc.update();
+  if (fcValueEl && fcContributedEl && fcProfitEl) {
+    fcValueEl.textContent = yen(cap);
+    fcContributedEl.textContent = yen(inv);
+    fcProfitEl.textContent = yen(cap - inv);
+    fcProfitEl.className = 'big fc-profit ' + (cap - inv >= 0 ? 'pos' : 'neg');
+  }
+}
+fcForm.addEventListener('input', recomputeProj);
+
+const buySection = document.getElementById('buy');
+const buyMsg = document.getElementById('buyMsg');
+document.getElementById('buyToggle').addEventListener('click', () => {
+  const hidden = buySection.style.display === 'none';
+  buySection.style.display = hidden ? 'block' : 'none';
+});
+const dateInput = document.querySelector('#buyForm [name=date]');
+dateInput.value = new Date().toISOString().slice(0, 10);
+document.getElementById('buyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  buyMsg.textContent = '';
+  const body = Object.fromEntries(new FormData(e.target));
+  const res = await fetch('/api/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const j = await res.json().catch(() => ({}));
+    buyMsg.textContent = 'Error: ' + (j.error || res.status);
+    buyMsg.className = 'warning';
+  }
+});
+</script>
+</body>
+</html>
