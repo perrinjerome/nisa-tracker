@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import re
+import sys
 import threading
 import time
 
@@ -17,7 +19,15 @@ from flask import (
 import db
 import fetch
 
-app = Flask(__name__)
+
+def _template_folder():
+    local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+    if os.path.isdir(local):
+        return local
+    return os.path.join(sys.prefix, "templates")
+
+
+app = Flask(__name__, template_folder=_template_folder())
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 STRINGS = {

@@ -8,10 +8,20 @@ version = "0.1.0"
 description = "Follow the value of a Japanese NISA account"
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Jerome Perrin" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
 dependencies = [
     "Flask>=3.0",
     "requests>=2.28",
 ]
+
+[project.urls]
+Homepage = "https://github.com/perrinjerome/nisa-tracker"
+Repository = "https://github.com/perrinjerome/nisa-tracker"
 
 [project.scripts]
 nisa-app = "app:main"
@@ -19,3 +29,6 @@ nisa-fetch = "fetch:main"
 
 [tool.setuptools]
 py-modules = ["app", "db", "fetch"]
+
+[tool.setuptools.data-files]
+"templates" = ["templates/index.html"]
