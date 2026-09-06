@@ -4,6 +4,11 @@ import re
 import sqlite3
 import unicodedata
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+
+def today():
+    return datetime.now(ZoneInfo("Asia/Tokyo")).date()
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "nisa.db")
 
@@ -88,7 +93,9 @@ def fund_for(display_name):
     raise ValueError(f"Unknown fund: {display_name}")
 
 
-def load_purchases_csv(path=os.path.join(os.path.dirname(__file__), "input.csv")):
+def load_purchases_csv(path=None):
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), "input.csv")
     init_db()
     conn = connect()
     added = skipped = 0
@@ -448,7 +455,7 @@ def forecast():
     annual_return = float(settings.get("annual_return_pct") or 5.0)
     monthly_return = annual_return / 100 / 12
 
-    window = date.today() - timedelta(days=120)
+    window = today() - timedelta(days=120)
     nisa_tsumitate = [
         p["invested"]
         for p in purchases
@@ -474,7 +481,7 @@ def forecast():
     usage = nisa_usage()
     current_total = valuation()["total_value"]
 
-    now = date.today()
+    now = today()
     cursor = date(now.year, now.month, 1)
     months = []
 
@@ -538,7 +545,7 @@ def tsumitate_projection(months=120):
     monthly_tsumitate = float(settings["monthly_tsumitate"]) if "monthly_tsumitate" in settings else None
     monthly_growth = float(settings["monthly_growth"]) if "monthly_growth" in settings else None
     if monthly_tsumitate is None or monthly_growth is None:
-        window = date.today() - timedelta(days=365)
+        window = today() - timedelta(days=365)
         recent_purchases = [p for p in get_purchases() if p["date"] >= window.isoformat()]
         n_months = max(1, len({p["date"][:7] for p in recent_purchases}))
         if monthly_tsumitate is None:
@@ -554,7 +561,7 @@ def tsumitate_projection(months=120):
     deposit = monthly_tsumitate + monthly_growth
 
     val = valuation()
-    now_month = f"{date.today():%Y-%m}-01"
+    now_month = f"{today():%Y-%m}-01"
     points = [
         {
             "date": now_month,
@@ -567,7 +574,7 @@ def tsumitate_projection(months=120):
     capital = val["total_value"]
     invested = val["total_cost"]
 
-    cursor = start_of_next_month(date.today())
+    cursor = start_of_next_month(today())
     for _ in range(months):
         invested += deposit
         capital = (capital + deposit) * (1 + monthly_return)

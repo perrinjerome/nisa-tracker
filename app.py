@@ -182,11 +182,6 @@ def index():
     proj = db.tsumitate_projection()
     purchases = db.get_purchases()
 
-    year = None
-    for p in purchases:
-        if p["account"].startswith("NISA "):
-            year = p["date"][:4]
-
     fc_display = dict(fc)
     if proj["points"]:
         last = proj["points"][-1]

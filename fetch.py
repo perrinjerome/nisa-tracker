@@ -96,7 +96,6 @@ def get_nav(isin, code, name):
 
 def main():
     records = []
-    new = 0
 
     for isin, fund in db.FUNDS.items():
         name = fund["name"]
