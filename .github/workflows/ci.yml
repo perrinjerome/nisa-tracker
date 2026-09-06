@@ -6,12 +6,12 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install tools
-        run: pip install ty ruff
+      - name: Install tools and project
+        run: pip install ty ruff -e .
       - name: Type check
         run: ty check .
       - name: Lint
