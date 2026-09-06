@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import json
+import logging
 import os
 import re
 import sys
 import threading
 import time
 
+import requests
 from flask import (
     Flask,
     jsonify,
@@ -16,8 +18,7 @@ from flask import (
     request,
 )
 
-import db
-import fetch
+from nisa_tracker import ai, db, fetch
 
 
 def _template_folder():
@@ -81,6 +82,13 @@ STRINGS = {
         "buy_submit": "買付を記録",
         "buy_placeholder": "例: 50000",
         "today": "今日",
+        "chat": "アシスタント",
+        "chat_placeholder": "質問を入力（例: 今の損益は？）",
+        "chat_send": "送信",
+        "chat_new": "新しい会話",
+        "chat_delete_confirm": "この会話を削除しますか？",
+        "chat_default_model": "デフォルト",
+        "chat_config_note": "AI チャットは未設定です（OPENAI_API_URL と OPENAI_API_TOKEN を設定してください）",
     },
     "en": {
         "title": "NISA Account Tracker",
@@ -100,7 +108,7 @@ STRINGS = {
         "profit_pct": "Return",
         "per_fund": "Per fund",
         "price_history": "Price history",
-        "yearly_limit": "Yearly limit",
+        "yearly_limit": "Limits",
         "lifetime_limit": "Lifetime limit",
         "used": "Used",
         "remaining": "Remaining",
@@ -132,6 +140,13 @@ STRINGS = {
         "buy_submit": "Record purchase",
         "buy_placeholder": "e.g. 50000",
         "today": "Today",
+        "chat": "Assistant",
+        "chat_placeholder": "Ask something (e.g. what is my current profit?)",
+        "chat_send": "Send",
+        "chat_new": "New chat",
+        "chat_delete_confirm": "Delete this conversation?",
+        "chat_default_model": "Default",
+        "chat_config_note": "AI chat is not configured (set OPENAI_API_URL and OPENAI_API_TOKEN)",
     },
 }
 
@@ -245,6 +260,7 @@ def index():
             "lifetime": db.LIFETIME_LIMIT,
             "growth_lifetime": db.GROWTH_LIFETIME_LIMIT,
         },
+        chat_available=ai.available(),
     )
 
 
@@ -264,9 +280,13 @@ def refresh():
 
 @app.route("/settings", methods=["POST"])
 def settings():
-    db.set_setting("monthly_tsumitate", max(0, float(request.form["monthly_tsumitate"])))
-    db.set_setting("monthly_growth", max(0, float(request.form["monthly_growth"])))
-    db.set_setting("annual_return_pct", max(0, float(request.form["annual_return_pct"])))
+    def parse(key):
+        raw = request.form.get(key, "").strip()
+        return float(raw) if raw else 0.0
+
+    db.set_setting("monthly_tsumitate", max(0, parse("monthly_tsumitate")))
+    db.set_setting("monthly_growth", max(0, parse("monthly_growth")))
+    db.set_setting("annual_return_pct", max(0, parse("annual_return_pct")))
     return redirect(request.referrer or "/")
 
 
@@ -332,7 +352,103 @@ def api_buy():
     return jsonify(purchase), 201
 
 
+def _chat_title(content):
+    title = re.sub(r"\s+", " ", content).strip()
+    return title[:50]
+
+
+@app.route("/api/conversations")
+def api_conversations():
+    conversations = db.list_conversations()
+    for c in conversations:
+        c["title"] = c["title"] or c["updated_at"]
+    return jsonify(conversations=conversations)
+
+
+@app.route("/api/conversations/<int:conversation_id>")
+def api_conversation(conversation_id):
+    conv = db.get_conversation(conversation_id)
+    if conv is None:
+        return jsonify(error="unknown conversation"), 404
+    if not conv["title"]:
+        conv["title"] = conv["updated_at"] or ""
+    return jsonify(conv)
+
+
+@app.route("/api/conversations/<int:conversation_id>", methods=["DELETE"])
+def api_conversation_delete(conversation_id):
+    if not db.delete_conversation(conversation_id):
+        return jsonify(error="unknown conversation"), 404
+    return "", 204
+
+
+@app.route("/api/models")
+def api_models():
+    if not ai.available():
+        return jsonify(error="AI chat is not configured"), 503
+    return jsonify(models=ai.list_models())
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    if not ai.available():
+        return jsonify(error="AI chat is not configured"), 503
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+        return jsonify(error="invalid request body"), 400
+
+    messages = []
+    for item in data["messages"][-20:]:
+        role = str(item.get("role") or "")
+        content = item.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content:
+            messages.append({"role": role, "content": content})
+    if not messages or messages[-1]["role"] != "user":
+        return jsonify(error="the last message must be from the user"), 400
+
+    conversation_id = data.get("conversation_id")
+    if conversation_id is not None and type(conversation_id) is not int:
+        return jsonify(error="invalid conversation_id"), 400
+
+    if conversation_id is None:
+        conversation_id = db.create_conversation()
+    conversation = db.get_conversation(conversation_id)
+    if conversation is None:
+        return jsonify(error="unknown conversation"), 404
+
+    for m in messages:
+        db.add_message(conversation_id, m["role"], m["content"])
+    if not conversation["title"] and messages[0]["role"] == "user":
+        db.set_conversation_title(conversation_id, _chat_title(messages[0]["content"]))
+
+    stored = [
+        {"role": m["role"], "content": m["content"]}
+        for m in conversation["messages"]
+    ]
+    model_messages = (stored + messages)[-40:]
+    model = data.get("model") if isinstance(data.get("model"), str) else None
+
+    try:
+        reply = ai.run_chat(model_messages, model=model)
+    except (
+        requests.exceptions.RequestException,
+        KeyError,
+        IndexError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        return jsonify(error=f"request to the AI endpoint failed: {exc}"), 502
+
+    db.add_message(conversation_id, "assistant", reply)
+    return jsonify(reply=reply, conversation_id=conversation_id)
+
+
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     db.init_db()
     if not db.get_purchases():
         print("No purchases — importing input.csv...")

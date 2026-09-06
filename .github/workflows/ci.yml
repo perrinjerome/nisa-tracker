@@ -11,8 +11,10 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install tools and project
-        run: pip install ty ruff -e .
+        run: pip install ty ruff pytest -e .
       - name: Type check
         run: ty check .
       - name: Lint
         run: ruff check .
+      - name: Test
+        run: pytest
