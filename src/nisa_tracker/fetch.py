@@ -5,7 +5,7 @@ import io
 
 import requests
 
-import db
+from nisa_tracker import db
 
 FUND_LIBRARY_URL = (
     "https://toushin-lib.fwg.ne.jp/"

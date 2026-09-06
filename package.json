@@ -1,0 +1,12 @@
+{
+  "name": "nisa-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UI tests for the dashboard template",
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  },
+  "scripts": {
+    "test": "node --test tests/ui/ui.test.mjs"
+  }
+}

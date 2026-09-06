@@ -10,7 +10,19 @@ from zoneinfo import ZoneInfo
 def today():
     return datetime.now(ZoneInfo("Asia/Tokyo")).date()
 
+
+def now_iso():
+    return datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "nisa.db")
+
+def _csv_path():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for base in (os.getcwd(), here, os.path.dirname(here)):
+        candidate = os.path.join(base, "input.csv")
+        if os.path.isfile(candidate):
+            return candidate
+    return os.path.join(os.getcwd(), "input.csv")
 
 FUNDS = {
     "JP90C000H1T1": {
@@ -71,6 +83,23 @@ def init_db():
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS conversations (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            title      TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            role            TEXT NOT NULL,
+            content         TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conv_msgs_conv
+            ON conversation_messages (conversation_id, id);
         """
     )
     conn.commit()
@@ -95,7 +124,7 @@ def fund_for(display_name):
 
 def load_purchases_csv(path=None):
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "input.csv")
+        path = _csv_path()
     init_db()
     conn = connect()
     added = skipped = 0
@@ -270,6 +299,101 @@ def set_setting(key, value):
     )
     conn.commit()
     conn.close()
+
+
+def create_conversation():
+    stamp = now_iso()
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO conversations (title, created_at, updated_at) "
+        "VALUES ('', ?, ?)",
+        (stamp, stamp),
+    )
+    conn.commit()
+    conversation_id = cur.lastrowid
+    conn.close()
+    return conversation_id
+
+
+def list_conversations():
+    conn = connect()
+    rows = conn.execute(
+        """
+        SELECT c.id, c.title, c.updated_at, COUNT(m.id) AS count
+        FROM conversations c
+        LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+        GROUP BY c.id
+        ORDER BY c.updated_at DESC, c.id DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_conversation(conversation_id):
+    conn = connect()
+    conv = conn.execute(
+        "SELECT id, title, updated_at FROM conversations WHERE id = ?",
+        (conversation_id,),
+    ).fetchone()
+    if conv is None:
+        conn.close()
+        return None
+    messages = conn.execute(
+        "SELECT id, role, content FROM conversation_messages "
+        "WHERE conversation_id = ? ORDER BY id",
+        (conversation_id,),
+    ).fetchall()
+    conn.close()
+    return {
+        "id": conv["id"],
+        "title": conv["title"],
+        "updated_at": conv["updated_at"],
+        "messages": [dict(m) for m in messages],
+    }
+
+
+def add_message(conversation_id, role, content):
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO conversation_messages (conversation_id, role, content) "
+        "VALUES (?, ?, ?)",
+        (conversation_id, role, content),
+    )
+    conn.execute(
+        "UPDATE conversations SET updated_at = ? WHERE id = ?",
+        (now_iso(), conversation_id),
+    )
+    conn.commit()
+    message_id = cur.lastrowid
+    conn.close()
+    return message_id
+
+
+def set_conversation_title(conversation_id, title):
+    conn = connect()
+    conn.execute(
+        "UPDATE conversations SET title = ? WHERE id = ?",
+        (title, conversation_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_conversation(conversation_id):
+    conn = connect()
+    conn.execute(
+        "DELETE FROM conversation_messages WHERE conversation_id = ?",
+        (conversation_id,),
+    )
+    cur = conn.execute(
+        "DELETE FROM conversations WHERE id = ?",
+        (conversation_id,),
+    )
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
 
 
 def valuation():
@@ -487,6 +611,7 @@ def forecast():
 
     value = current_total
     contributed = 0.0
+    prev_year = now.year
     tsumitate_used = usage["yearly"].get(str(now.year), {}).get("tsumitate", 0.0)
     growth_used = usage["yearly"].get(str(now.year), {}).get("growth", 0.0)
 
@@ -494,9 +619,10 @@ def forecast():
         value = value * (1 + monthly_return)
 
         year = cursor.year
-        if year != now.year:
+        if year != prev_year:
             tsumitate_used = 0.0
             growth_used = 0.0
+        prev_year = year
 
         tsumitate_used += monthly_tsumitate
         growth_used += monthly_growth
@@ -601,7 +727,7 @@ if __name__ == "__main__":
     import sys
 
     opts, _ = getopt.getopt(sys.argv[1:], "i:", ["input="])
-    path = os.path.join(os.path.dirname(__file__), "input.csv")
+    path = _csv_path()
     for o, a in opts:
         if o in ("-i", "--input"):
             path = a

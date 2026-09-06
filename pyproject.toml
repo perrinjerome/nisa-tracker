@@ -17,18 +17,23 @@ classifiers = [
 dependencies = [
     "Flask>=3.0",
     "requests>=2.28",
+    "RestrictedPython>=7.4",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
 
 [project.urls]
 Homepage = "https://github.com/perrinjerome/nisa-tracker"
 Repository = "https://github.com/perrinjerome/nisa-tracker"
 
 [project.scripts]
-nisa-app = "app:main"
-nisa-fetch = "fetch:main"
+nisa-app = "nisa_tracker.app:main"
+nisa-fetch = "nisa_tracker.fetch:main"
 
 [tool.setuptools]
-py-modules = ["app", "db", "fetch"]
+package-dir = {"" = "src"}
+packages = ["nisa_tracker"]
 
-[tool.setuptools.data-files]
-"templates" = ["templates/index.html"]
+[tool.setuptools.package-data]
+nisa_tracker = ["templates/index.html"]

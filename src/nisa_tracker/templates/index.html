@@ -36,6 +36,11 @@
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
   .muted { color:var(--mut); font-size:0.85rem; }
+  .dots { display:inline-flex; gap:5px; align-items:center; padding:4px 0; }
+  .dots i { width:6px; height:6px; border-radius:50%; background:var(--mut); animation:thinkDot 1.2s ease-in-out infinite; }
+  .dots i:nth-child(2) { animation-delay:.2s; }
+  .dots i:nth-child(3) { animation-delay:.4s; }
+  @keyframes thinkDot { 0%,60%,100% { transform:translateY(0); opacity:.35; } 30% { transform:translateY(-4px); opacity:1; } }
   label { display:block; color:var(--mut); font-size:0.85rem; margin-bottom:4px; }
   input { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--fg);
           border-radius:8px; padding:8px; font-size:0.95rem; }
@@ -51,6 +56,34 @@
   .pill.nisa { background:rgba(56,189,248,.15); color:var(--blu); }
   .pill.tax { background:rgba(148,163,184,.15); color:var(--mut); }
   #chart { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; height:400px; }
+  .chat-msgs { max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
+  .bubble { max-width:80%; padding:10px 14px; border-radius:12px; line-height:1.5; font-size:0.9rem; overflow-wrap:anywhere; }
+  .bubble.usr { align-self:flex-end; background:var(--blu); color:#082f49; white-space:pre-wrap; }
+  .bubble.ai { align-self:flex-start; background:var(--bg); border:1px solid var(--line); }
+  .bubble.ai p { margin:0 0 8px; } .bubble.ai p:last-child { margin-bottom:0; }
+  .bubble.ai ul, .bubble.ai ol { margin:0 0 8px; padding-left:20px; }
+  .bubble.ai li { margin:2px 0; }
+  .bubble.ai code { background:rgba(148,163,184,.18); border-radius:4px; padding:1px 5px; font-size:0.85em; }
+  .bubble.ai pre { background:#0b1220; border:1px solid var(--line); border-radius:8px; padding:10px; overflow-x:auto; }
+  .bubble.ai pre code { background:none; padding:0; white-space:pre; }
+  .bubble.ai blockquote { margin:0 0 8px; padding:4px 12px; border-left:3px solid var(--blu); color:var(--mut); }
+  .bubble.ai a { color:var(--blu); }
+  .bubble.ai table { border-collapse:collapse; margin:0 0 8px; }
+  .bubble.ai th, .bubble.ai td { border:1px solid var(--line); padding:4px 8px; }
+  .bubble.ai hr { border:none; border-top:1px solid var(--line); margin:10px 0; }
+  .chat-layout { display:flex; gap:16px; }
+  .chat-side { flex:0 0 210px; display:flex; flex-direction:column; gap:8px; }
+  .chat-main { flex:1; min-width:0; }
+  .chat-list { max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .chat-item { display:flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--line);
+               border-radius:8px; padding:6px 8px; font-size:0.85rem; cursor:pointer; color:var(--fg); }
+  .chat-item.sel { border-color:var(--blu); }
+  .chat-item .ti { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-item .del { color:var(--mut); background:none; border:0; cursor:pointer; font-size:1.05rem; line-height:1; padding:0 2px; }
+  .chat-item .del:hover { color:var(--red); }
+  .chat-title { color:var(--mut); font-size:0.85rem; margin:0 0 8px; }
+  @media (max-width:720px){ .chat-layout { flex-direction:column; } .chat-side { flex-basis:auto; } }
+  .chat-form { display:grid; grid-template-columns:1fr auto; gap:10px; }
 </style>
 </head>
 <body>
@@ -64,6 +97,36 @@
   <a class="btn" id="buyToggle" href="javascript:void(0)">{{ t.buy }}</a>
   <a class="btn" href="/refresh">{{ t.refresh }}</a>
 </header>
+
+<section id="chat">
+  <h2>{{ t.chat }}</h2>
+  <div class="card">
+    {% if chat_available %}
+    <div class="chat-layout">
+      <div class="chat-side">
+        <button class="btn" type="button" id="chatNew">{{ t.chat_new }}</button>
+        <div id="chatList" class="chat-list"></div>
+      </div>
+      <div class="chat-main">
+        <p id="chatTitle" class="chat-title"></p>
+        <div id="chatMessages" class="chat-msgs"></div>
+        <p id="chatStatus" class="muted"></p>
+        <form id="chatForm" class="chat-form">
+          <div style="display:flex;gap:10px;align-items:center">
+            <input id="chatInput" type="text" placeholder="{{ t.chat_placeholder }}" autocomplete="off" style="flex:1">
+            <select id="chatModel" style="background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px" title="model">
+              <option value="">{{ t.chat_default_model }}</option>
+            </select>
+            <button class="btn" type="submit">{{ t.chat_send }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <p class="muted">{{ t.chat_config_note }}</p>
+    {% endif %}
+  </div>
+</section>
 
 {% if val.last_price_date %}
 <p class="muted">{{ t.last_update }}: {{ val.last_price_date }}</p>
@@ -398,6 +461,256 @@ document.getElementById('buyForm').addEventListener('submit', async (e) => {
     buyMsg.className = 'warning';
   }
 });
+
+const chatForm = document.getElementById('chatForm');
+if (chatForm) {
+  const chatBox = document.getElementById('chatMessages');
+  const chatInput = document.getElementById('chatInput');
+  const chatStatus = document.getElementById('chatStatus');
+  const chatModel = document.getElementById('chatModel');
+  const chatList = document.getElementById('chatList');
+  const chatNew = document.getElementById('chatNew');
+  const chatTitle = document.getElementById('chatTitle');
+  let conversations = [];
+  let current = null;
+  const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const mdInline = src => {
+    let s = escapeHtml(src);
+    s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+    s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return s;
+  };
+  const cellTexts = r => r.trim().replace(/^\|/, '').replace(/\|\s*$/, '').split('|');
+  const mdToHtml = src => {
+    const lines = src.replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let i = 0, list = null;
+    const closeList = () => { if (list) { out.push('</' + list.tag + '>'); list = null; } };
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^```/.test(line)) {
+        closeList();
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+        i++;
+        out.push('<pre><code>' + escapeHtml(buf.join('\n')) + '</code></pre>');
+        continue;
+      }
+      const h = line.match(/^(#{1,6})\s+(.+)$/);
+      if (h) {
+        closeList();
+        const lvl = h[1].length;
+        out.push('<h' + lvl + '>' + mdInline(h[2]) + '</h' + lvl + '>');
+        i++;
+        continue;
+      }
+      if (/^\s*>\s?/.test(line)) {
+        closeList();
+        const buf = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          buf.push(lines[i].replace(/^\s*>\s?/, ''));
+          i++;
+        }
+        out.push('<blockquote>' + mdToHtml(buf.join('\n')) + '</blockquote>');
+        continue;
+      }
+      const ulm = line.match(/^\s*[-*+]\s+(.+)$/);
+      const olm = line.match(/^\s*\d+\.\s+(.+)$/);
+      if (ulm || olm) {
+        const tag = ulm ? 'ul' : 'ol';
+        if (!list || list.tag !== tag) { closeList(); list = { tag }; out.push('<' + tag + '>'); }
+        out.push('<li>' + mdInline((ulm || olm)[1]) + '</li>');
+        i++;
+        continue;
+      }
+      if (list) { closeList(); continue; }
+      if (/^\s*\|/.test(line)) {
+        const rows = [];
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+        const isSep = r => {
+          const p = cellTexts(r);
+          return p.length >= 2 && p.every(c => /^:?-+:?$/.test(c.trim()));
+        };
+        const sepIdx = rows.findIndex(isSep);
+        const head = sepIdx >= 0 ? rows.slice(0, sepIdx) : [];
+        const body = sepIdx >= 0 ? rows.slice(sepIdx + 1) : rows;
+        let html = '';
+        if (head.length) {
+          html += '<thead>' + head.map(r => '<tr>' + cellTexts(r).map(c => '<th>' + mdInline(c.trim()) + '</th>').join('') + '</tr>').join('') + '</thead>';
+        }
+        if (body.length) {
+          html += '<tbody>' + body.map(r => '<tr>' + cellTexts(r).map(c => '<td>' + mdInline(c.trim()) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+        }
+        out.push('<table>' + html + '</table>');
+        continue;
+      }
+      if (/^\s*(?:[-*_])\s*(?:[-*_])\s*(?:[-*_])\s*$/.test(line)) {
+        closeList();
+        out.push('<hr>');
+        i++;
+        continue;
+      }
+      if (line.trim() === '') { i++; continue; }
+      const buf = [line];
+      i++;
+      while (i < lines.length && lines[i].trim() !== ''
+          && !/^(#{1,6}\s|\s*>\s?|\s*[-*+]\s+|\s*\d+\.\s+|\s*```)/.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      out.push('<p>' + mdInline(buf.join('<br>')) + '</p>');
+    }
+    closeList();
+    return out.join('\n');
+  };
+  const push = (role, text) => {
+    const isAi = role === 'ai' || role === 'assistant';
+    const d = document.createElement('div');
+    d.className = 'bubble ' + (isAi ? 'ai' : 'usr');
+    if (isAi) d.innerHTML = mdToHtml(text);
+    else d.textContent = text;
+    chatBox.appendChild(d);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  };
+  const syncTitle = () => { chatTitle.textContent = current ? current.title : ''; };
+  const renderList = selId => {
+    chatList.textContent = '';
+    for (const c of conversations) {
+      const item = document.createElement('div');
+      item.className = 'chat-item' + (c.id === selId ? ' sel' : '');
+      const ti = document.createElement('span');
+      ti.className = 'ti';
+      ti.textContent = c.title;
+      ti.title = c.title;
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '×';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm({{ (t.chat_delete_confirm or 'Delete this conversation?')|tojson }})) return;
+        await fetch('/api/conversations/' + c.id, { method: 'DELETE' }).catch(() => {});
+        conversations = conversations.filter(x => x.id !== c.id);
+        if (current && current.id === c.id) {
+          current = null;
+          chatBox.textContent = '';
+          try { localStorage.removeItem('chatConversation'); } catch (_) {}
+        }
+        syncTitle();
+        renderList(current && current.id);
+        chatInput.focus();
+      });
+      item.appendChild(ti);
+      item.appendChild(del);
+      item.addEventListener('click', () => openConversation(c.id));
+      chatList.appendChild(item);
+    }
+  };
+  const openConversation = async id => {
+    try {
+      const res = await fetch('/api/conversations/' + id);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'failed to load conversation');
+      current = j;
+      chatBox.textContent = '';
+      syncTitle();
+      renderList(id);
+      try { localStorage.setItem('chatConversation', String(id)); } catch (_) {}
+      for (const m of current.messages) push(m.role, m.content);
+      chatInput.focus();
+    } catch (err) {
+      chatStatus.textContent = err.message;
+    }
+  };
+  const refreshList = async () => {
+    try {
+      const j = await (await fetch('/api/conversations')).json();
+      conversations = Array.isArray(j.conversations) ? j.conversations : [];
+      renderList(current && current.id);
+      if (current) {
+        const upd = conversations.find(c => c.id === current.id);
+        if (upd && upd.title) current.title = upd.title;
+        syncTitle();
+      }
+      return conversations;
+    } catch (_) {
+      return [];
+    }
+  };
+  (async () => {
+    await refreshList();
+    let saved = null;
+    try { saved = localStorage.getItem('chatConversation'); } catch (_) {}
+    const match = saved ? conversations.find(c => c.id === Number(saved)) : null;
+    const first = match || conversations[0];
+    if (first) await openConversation(first.id);
+  })();
+  chatNew.addEventListener('click', () => {
+    current = null;
+    chatBox.textContent = '';
+    syncTitle();
+    renderList(null);
+    try { localStorage.removeItem('chatConversation'); } catch (_) {}
+    chatInput.focus();
+  });
+  if (chatModel) {
+    const saved = localStorage.getItem('chatModel');
+    if (saved && [...chatModel.options].some(o => o.value === saved)) chatModel.value = saved;
+    fetch('/api/models')
+      .then(r => r.json())
+      .then(j => {
+        if (!Array.isArray(j.models) || !j.models.length) return;
+        for (const m of j.models) {
+          const o = document.createElement('option');
+          o.value = m;
+          o.textContent = m;
+          chatModel.appendChild(o);
+        }
+        if (saved && [...chatModel.options].some(o => o.value === saved)) chatModel.value = saved;
+      })
+      .catch(() => {});
+    chatModel.addEventListener('change', () => {
+      localStorage.setItem('chatModel', chatModel.value);
+    });
+  }
+  chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = chatInput.value.trim();
+    if (!q) return;
+    push('user', q);
+    chatInput.value = '';
+    chatStatus.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+    const body = {
+      messages: [{ role: 'user', content: q }],
+      conversation_id: current ? current.id : undefined,
+    };
+    if (chatModel && chatModel.value) body.model = chatModel.value;
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'chat failed');
+      if (!current || current.id !== j.conversation_id) {
+        current = null;
+        await openConversation(j.conversation_id);
+      } else {
+        push('ai', j.reply);
+      }
+      await refreshList();
+    } catch (err) {
+      push('ai', '⚠ ' + err.message);
+    }
+    chatStatus.textContent = '';
+  });
+}
 </script>
 </body>
 </html>
