@@ -94,6 +94,7 @@
     <a href="/lang/en" class="{{ 'cur' if lang=='en' }}">{{ t.lang_en }}</a>
   </span>
   <div class="spacer"></div>
+  <a class="btn" id="importToggle" href="javascript:void(0)">{{ t.import }}</a>
   <a class="btn" id="buyToggle" href="javascript:void(0)">{{ t.buy }}</a>
   <a class="btn" href="/refresh">{{ t.refresh }}</a>
 </header>
@@ -133,6 +134,18 @@
 {% else %}
 <p class="warning">{{ t.no_data }}</p>
 {% endif %}
+
+<section id="import" style="display:none">
+  <h2>{{ t.import }}</h2>
+  <div class="card">
+    <form id="importForm" enctype="multipart/form-data">
+      <div><label>{{ t.import_file }}</label>
+        <input type="file" name="file" accept=".csv,text/csv" required></div>
+      <button class="btn" type="submit">{{ t.import_submit }}</button>
+    </form>
+    <p id="importMsg" style="margin:10px 0 0"></p>
+  </div>
+</section>
 
 <section id="buy" style="display:none">
   <h2>{{ t.buy }}</h2>
@@ -438,6 +451,26 @@ fcForm.addEventListener('input', recomputeProj);
 
 const buySection = document.getElementById('buy');
 const buyMsg = document.getElementById('buyMsg');
+const importSection = document.getElementById('import');
+const importMsg = document.getElementById('importMsg');
+document.getElementById('importToggle').addEventListener('click', () => {
+  const hidden = importSection.style.display === 'none';
+  importSection.style.display = hidden ? 'block' : 'none';
+});
+document.getElementById('importForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  importMsg.textContent = '';
+  const res = await fetch('/api/import', { method: 'POST', body: new FormData(e.target) });
+  if (res.ok) {
+    const result = await res.json();
+    importMsg.textContent = `Imported ${result.added} purchase(s). Reloading...`;
+    location.reload();
+  } else {
+    const j = await res.json().catch(() => ({}));
+    importMsg.textContent = 'Error: ' + (j.error || res.status);
+    importMsg.className = 'warning';
+  }
+});
 document.getElementById('buyToggle').addEventListener('click', () => {
   const hidden = buySection.style.display === 'none';
   buySection.style.display = hidden ? 'block' : 'none';

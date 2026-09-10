@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import pytest
 
 from nisa_tracker import ai, app, db
@@ -12,6 +14,18 @@ def client(db_seed):
 
 def test_index_renders(client):
     c, _ = client
+    r = c.get("/")
+    assert r.status_code == 200
+    assert b"NISA" in r.data
+
+
+def test_index_renders_without_purchases(client):
+    c, _ = client
+    conn = db.connect()
+    conn.execute("DELETE FROM purchases")
+    conn.commit()
+    conn.close()
+
     r = c.get("/")
     assert r.status_code == 200
     assert b"NISA" in r.data
@@ -204,3 +218,23 @@ def test_buy_no_price_on_date(client):
         json={"date": "2020-01-01", "amount": 50000, "fund": isin},
     )
     assert r.status_code == 422
+
+
+def test_import_csv(client):
+    c, _ = client
+    csv_data = (
+        "約定日,銘柄,取引,預り,約定数量,約定単価,手数料/諸経費等,税額\n"
+        "1/5/2024,ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）,投信金額買付,NISA (つみたて),1000,35000,0,0\n"
+    ).encode("utf-8-sig")
+
+    r = c.post(
+        "/api/import",
+        data={"file": (BytesIO(csv_data), "purchases.csv")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 201
+    assert r.json == {"added": 1, "skipped": 0}
+    assert len(db.get_purchases()) == 4
+
+    r = c.post("/api/import", data={}, content_type="multipart/form-data")
+    assert r.status_code == 400
