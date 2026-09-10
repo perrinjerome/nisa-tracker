@@ -8,6 +8,11 @@ def test_parse_date_formats():
     assert db.parse_date("2024-01-02") == "2024-01-02"
 
 
+def test_missing_csv_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "_csv_path", lambda: str(tmp_path / "missing.csv"))
+    assert db.load_purchases_csv() == (0, 0)
+
+
 def test_normalize_case_spaces():
     assert db.normalize(" ｅＭＡＸＩＳ Ｓｌｉｍ ") == "emaxisslim"
 

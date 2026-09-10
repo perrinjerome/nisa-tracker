@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 
@@ -81,6 +82,9 @@ STRINGS = {
         "buy_amount": "金額 (円)",
         "buy_submit": "買付を記録",
         "buy_placeholder": "例: 50000",
+        "import": "CSV取込",
+        "import_file": "CSVファイル",
+        "import_submit": "CSVを取り込む",
         "today": "今日",
         "chat": "アシスタント",
         "chat_placeholder": "質問を入力（例: 今の損益は？）",
@@ -139,6 +143,9 @@ STRINGS = {
         "buy_amount": "Amount (¥)",
         "buy_submit": "Record purchase",
         "buy_placeholder": "e.g. 50000",
+        "import": "Import CSV",
+        "import_file": "CSV file",
+        "import_submit": "Import CSV",
         "today": "Today",
         "chat": "Assistant",
         "chat_placeholder": "Ask something (e.g. what is my current profit?)",
@@ -352,6 +359,29 @@ def api_buy():
     return jsonify(purchase), 201
 
 
+@app.route("/api/import", methods=["POST"])
+def api_import():
+    uploaded = request.files.get("file")
+    if uploaded is None or not uploaded.filename:
+        return jsonify(error="CSV file is required"), 400
+
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as temporary:
+        temp_path = temporary.name
+
+    try:
+        uploaded.save(temp_path)
+        added, skipped = db.load_purchases_csv(temp_path)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return jsonify(error=f"invalid CSV file: {exc}"), 400
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+    return jsonify(added=added, skipped=skipped), 201
+
+
 def _chat_title(content):
     title = re.sub(r"\s+", " ", content).strip()
     return title[:50]
@@ -450,9 +480,10 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     db.init_db()
-    if not db.get_purchases():
+    input_path = db._csv_path()
+    if not db.get_purchases() and os.path.isfile(input_path):
         print("No purchases — importing input.csv...")
-        added, skipped = db.load_purchases_csv()
+        added, skipped = db.load_purchases_csv(input_path)
         print(f"Imported {added} purchases ({skipped} duplicates).")
 
     print("Refreshing prices at startup...")

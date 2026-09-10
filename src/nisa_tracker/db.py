@@ -125,6 +125,8 @@ def fund_for(display_name):
 def load_purchases_csv(path=None):
     if path is None:
         path = _csv_path()
+    if not os.path.isfile(path):
+        return 0, 0
     init_db()
     conn = connect()
     added = skipped = 0
@@ -441,7 +443,9 @@ def valuation():
         "total_cost": total_cost,
         "total_value": total_value,
         "total_profit": total_value - total_cost,
-        "total_profit_pct": (total_value - total_cost) / total_cost * 100,
+        "total_profit_pct": (
+            (total_value - total_cost) / total_cost * 100 if total_cost else 0.0
+        ),
         "last_price_date": last_price_date(),
     }
 

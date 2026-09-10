@@ -89,6 +89,28 @@ test("buy toggle shows/hides the buy section", () => {
   window.close();
 });
 
+test("import form posts the selected CSV as multipart data", async () => {
+  let posted = null;
+  const { window } = setupDom(html, {
+    fetch: (url, init) => {
+      if (url === "/api/import") {
+        posted = init.body;
+        return Promise.resolve({ ok: false, status: 422, json: async () => ({ error: "bad CSV" }) });
+      }
+      return fetchStub(url, init);
+    },
+  });
+  const form = window.document.getElementById("importForm");
+  const file = new window.File(["csv"], "purchases.csv", { type: "text/csv" });
+  Object.defineProperty(form.elements.file, "files", { value: [file] });
+  form.requestSubmit();
+  await flush();
+  assert.ok(posted instanceof window.FormData);
+  assert.equal(posted.get("file").name, "purchases.csv");
+  assert.match(window.document.getElementById("importMsg").textContent, /bad CSV/);
+  window.close();
+});
+
 test("buy form shows server error message", async () => {
   const { window } = setupDom(html, {
     fetch: (url, init) =>
